@@ -198,22 +198,27 @@ show_auth_url() {
     print_info "Siguiendo estrictamente el esquema definido en particionamiento_servidor_contenedores.md"
     print_info "Usando particiones dedicadas: /var (XFS+LVM) para configs, /srv (XFS) para datos"
     
-    # Mostrar un marco destacado para la URL
+    # PASO 1: Mostrar URL de forma muy destacada
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}                URL DE AUTENTICACIÓN DE CLOUDFLARE                   ${NC}"
     echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "${YELLOW}Copie y pegue esta URL en su navegador para autenticarse:${NC}"
+    echo -e "${YELLOW}*** PRIMERO: COPIE Y PEGUE ESTA URL EN SU NAVEGADOR PARA AUTENTICARSE ***${NC}"
     echo -e "${CYAN}$url${NC}"
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
     
-    # Mostrar el código QR debajo de la URL
+    # PASO 2: Texto explicativo para el QR
+    echo ""
+    echo -e "${YELLOW}*** ALTERNATIVAMENTE: ESTE ES EL CÓDIGO QR DE LA URL ANTERIOR ***${NC}"
+    echo -e "${YELLOW}Puede escanearlo con su dispositivo móvil para abrir la misma URL${NC}"
+    echo ""
+    
+    # PASO 3: Mostrar el código QR debajo de la URL
     if command -v qrencode &> /dev/null; then
-        echo ""
         echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}         O ESCANEE ESTE CÓDIGO QR CON SU DISPOSITIVO MÓVIL         ${NC}"
+        echo -e "${GREEN}                     CÓDIGO QR DE AUTENTICACIÓN                     ${NC}"
         echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         
@@ -221,7 +226,7 @@ show_auth_url() {
         qrencode -t ANSIUTF8 -m 2 -s 1 "$url"
         
         echo ""
-        echo -e "${YELLOW}Si el QR no se visualiza correctamente, utilice la URL de arriba${NC}"
+        echo -e "${YELLOW}Si el QR no se visualiza correctamente, utilice la URL proporcionada arriba${NC}"
         echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
         echo ""
     else
