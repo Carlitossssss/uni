@@ -198,14 +198,27 @@ show_auth_url() {
     print_info "Siguiendo estrictamente el esquema definido en particionamiento_servidor_contenedores.md"
     print_info "Usando particiones dedicadas: /var (XFS+LVM) para configs, /srv (XFS) para datos"
     
+    # IMPORTANTE: Limpiar cualquier entrada anterior
+    while read -r -t 0; do read -r; done
+    
     # Preguntar al usuario cómo quiere ver la información de autenticación
+    echo ""
+    echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}         SELECCIONE UNA OPCIÓN DE VISUALIZACIÓN                     ${NC}"
+    echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
     echo ""
     print_question "¿Cómo desea ver la información de autenticación? (Elija una opción):"
     echo "1. Ver solo la URL de autenticación"
     echo "2. Ver solo el código QR"
     echo "3. Ver ambos (URL y código QR)"
-    echo -n "Opción [1-3]: "
+    echo ""
+    echo -e "${YELLOW}Por favor, escriba 1, 2 o 3 y presione Enter:${NC}"
+    
+    # Leer la elección del usuario y asegurar que se espere la entrada
     read -r AUTH_VIEW_OPTION
+    
+    echo -e "${CYAN}Usted seleccionó la opción: $AUTH_VIEW_OPTION${NC}"
+    echo ""
     
     # Opción 1 o 3: Mostrar URL
     if [[ "$AUTH_VIEW_OPTION" = "1" || "$AUTH_VIEW_OPTION" = "3" ]]; then
@@ -252,7 +265,7 @@ show_auth_url() {
     
     # Si eligió una opción inválida, mostrar ambos por defecto
     if [[ "$AUTH_VIEW_OPTION" != "1" && "$AUTH_VIEW_OPTION" != "2" && "$AUTH_VIEW_OPTION" != "3" ]]; then
-        print_warning "Opción no válida. Mostrando ambas opciones."
+        print_warning "Opción no válida ($AUTH_VIEW_OPTION). Mostrando ambas opciones."
         
         # Mostrar URL
         echo ""
@@ -284,6 +297,47 @@ show_auth_url() {
     print_info "Esperando a que complete la autenticación..."
 }
 
+# Capturar la URL de autenticación y mostrarla según preferencia del usuario
+get_auth_url_and_show() {
+    print_info "Capturando URL de autenticación de Cloudflare..."
+    
+    # Usar un archivo temporal para capturar toda la salida
+    AUTH_OUTPUT_FILE=$(mktemp)
+    
+    # Ejecutar el comando de login y guardar toda la salida
+    cloudflared tunnel login 2>&1 | tee "$AUTH_OUTPUT_FILE"
+    
+    # Extraer la URL de la salida capturada
+    AUTH_URL=$(grep -o 'https://[^ ]*' "$AUTH_OUTPUT_FILE" | head -1)
+    
+    # Limpiar archivo temporal
+    rm -f "$AUTH_OUTPUT_FILE"
+    
+    if [ -n "$AUTH_URL" ]; then
+        print_success "URL de autenticación capturada correctamente: $AUTH_URL"
+        
+        # Mostrar la URL o QR según elección del usuario
+        show_auth_url "$AUTH_URL"
+        
+        # Esperar a que el usuario complete la autenticación
+        print_info "Esperando a que complete la autenticación..."
+        while [ ! -f "$HOME/.cloudflared/cert.pem" ] || [ "$(find "$HOME/.cloudflared/cert.pem" -mmin -5 | wc -l)" -eq 0 ]; do
+            sleep 5
+            echo -n "."
+        done
+        echo ""
+        print_success "Autenticación completada correctamente"
+    else
+        print_warning "No se pudo capturar la URL automáticamente. Usando método estándar."
+        cloudflared tunnel login
+        if [ $? -ne 0 ]; then
+            print_error "Error en el proceso de autenticación"
+            exit 1
+        fi
+        print_success "Autenticación completada correctamente"
+    fi
+}
+
 # Verificar si existe un certificado de autenticación
 if [ -f "$HOME/.cloudflared/cert.pem" ]; then
     print_info "Certificado de autenticación encontrado en $HOME/.cloudflared/cert.pem"
@@ -293,36 +347,16 @@ if [ -f "$HOME/.cloudflared/cert.pem" ]; then
     if [[ "$AUTH_CHOICE" = "nuevo" ]]; then
         print_step "Iniciando proceso de autenticación con Cloudflare (modo consola)"
         print_info "Este servidor no tiene interfaz gráfica, por lo que el proceso será en dos pasos:"
-        print_info "1. Se mostrará un código QR y un enlace de autenticación"
+        print_info "1. Seleccione cómo desea ver la información de autenticación"
         print_info "2. Escanee el QR o abra el enlace en un navegador e inicie sesión con Google"
         print_info "3. Una vez completado, el certificado se descargará automáticamente"
         
         echo ""
-        print_warning "A continuación se generará la autenticación. Utilice el código QR o la URL:"
+        print_warning "A continuación podrá elegir cómo ver la información de autenticación"
         echo ""
         
-        # Capturar la URL de autenticación y mostrarla como QR
-        AUTH_URL=$(cloudflared tunnel login 2>&1 | grep -o 'https://[^ ]*' | head -1)
-        
-        if [ -n "$AUTH_URL" ]; then
-            print_success "URL de autenticación capturada correctamente"
-            show_auth_url "$AUTH_URL"
-            # Esperar a que el usuario complete la autenticación
-            while [ ! -f "$HOME/.cloudflared/cert.pem" ] || [ "$(find "$HOME/.cloudflared/cert.pem" -mmin -5 | wc -l)" -eq 0 ]; do
-                sleep 5
-                echo -n "."
-            done
-            echo ""
-            print_success "Autenticación completada correctamente"
-        else
-            # Si no podemos capturar la URL, usamos el método estándar
-            cloudflared tunnel login
-            if [ $? -ne 0 ]; then
-                print_error "Error en el proceso de autenticación"
-                exit 1
-            fi
-            print_success "Autenticación completada correctamente"
-        fi
+        # Usar la nueva función para obtener y mostrar la URL
+        get_auth_url_and_show
         
         print_info "El certificado se ha descargado a $HOME/.cloudflared/cert.pem"
     else
@@ -331,36 +365,16 @@ if [ -f "$HOME/.cloudflared/cert.pem" ]; then
 else
     print_step "No se encontró certificado de autenticación. Iniciando proceso de autenticación"
     print_info "Este servidor no tiene interfaz gráfica, por lo que el proceso será en dos pasos:"
-    print_info "1. Se mostrará un código QR y un enlace de autenticación"
+    print_info "1. Seleccione cómo desea ver la información de autenticación"
     print_info "2. Escanee el QR o abra el enlace en un navegador e inicie sesión con Google"
     print_info "3. Una vez completado, el certificado se descargará automáticamente"
     
     echo ""
-    print_warning "A continuación se generará la autenticación. Utilice el código QR o la URL:"
+    print_warning "A continuación podrá elegir cómo ver la información de autenticación"
     echo ""
     
-    # Capturar la URL de autenticación y mostrarla como QR
-    AUTH_URL=$(cloudflared tunnel login 2>&1 | grep -o 'https://[^ ]*' | head -1)
-    
-    if [ -n "$AUTH_URL" ]; then
-        print_success "URL de autenticación capturada correctamente"
-        show_auth_url "$AUTH_URL"
-        # Esperar a que el usuario complete la autenticación
-        while [ ! -f "$HOME/.cloudflared/cert.pem" ] || [ "$(find "$HOME/.cloudflared/cert.pem" -mmin -5 | wc -l)" -eq 0 ]; do
-            sleep 5
-            echo -n "."
-        done
-        echo ""
-        print_success "Autenticación completada correctamente"
-    else
-        # Si no podemos capturar la URL, usamos el método estándar
-        cloudflared tunnel login
-        if [ $? -ne 0 ]; then
-            print_error "Error en el proceso de autenticación"
-            exit 1
-        fi
-        print_success "Autenticación completada correctamente"
-    fi
+    # Usar la nueva función para obtener y mostrar la URL
+    get_auth_url_and_show
     
     print_info "El certificado se ha descargado a $HOME/.cloudflared/cert.pem"
 fi
