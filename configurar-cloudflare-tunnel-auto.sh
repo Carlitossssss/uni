@@ -190,7 +190,7 @@ fi
 print_info "Siguiendo esquema de particionamiento definido en: particionamiento_servidor_contenedores.md"
 print_info "Usando /var para configuraciones (XFS+LVM) y /srv para datos (XFS)"
 
-# Función mejorada para mostrar URL y QR según esquema
+# Función mejorada para mostrar URL y/o QR según elección del usuario
 show_auth_url() {
     local url=$1
     
@@ -198,39 +198,87 @@ show_auth_url() {
     print_info "Siguiendo estrictamente el esquema definido en particionamiento_servidor_contenedores.md"
     print_info "Usando particiones dedicadas: /var (XFS+LVM) para configs, /srv (XFS) para datos"
     
-    # PASO 1: Mostrar URL de forma muy destacada
+    # Preguntar al usuario cómo quiere ver la información de autenticación
     echo ""
-    echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}                URL DE AUTENTICACIÓN DE CLOUDFLARE                   ${NC}"
-    echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${YELLOW}*** PRIMERO: COPIE Y PEGUE ESTA URL EN SU NAVEGADOR PARA AUTENTICARSE ***${NC}"
-    echo -e "${CYAN}$url${NC}"
-    echo ""
-    echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+    print_question "¿Cómo desea ver la información de autenticación? (Elija una opción):"
+    echo "1. Ver solo la URL de autenticación"
+    echo "2. Ver solo el código QR"
+    echo "3. Ver ambos (URL y código QR)"
+    echo -n "Opción [1-3]: "
+    read -r AUTH_VIEW_OPTION
     
-    # PASO 2: Texto explicativo para el QR
-    echo ""
-    echo -e "${YELLOW}*** ALTERNATIVAMENTE: ESTE ES EL CÓDIGO QR DE LA URL ANTERIOR ***${NC}"
-    echo -e "${YELLOW}Puede escanearlo con su dispositivo móvil para abrir la misma URL${NC}"
-    echo ""
-    
-    # PASO 3: Mostrar el código QR debajo de la URL
-    if command -v qrencode &> /dev/null; then
+    # Opción 1 o 3: Mostrar URL
+    if [[ "$AUTH_VIEW_OPTION" = "1" || "$AUTH_VIEW_OPTION" = "3" ]]; then
+        echo ""
         echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}                     CÓDIGO QR DE AUTENTICACIÓN                     ${NC}"
+        echo -e "${GREEN}                URL DE AUTENTICACIÓN DE CLOUDFLARE                   ${NC}"
+        echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "${YELLOW}COPIE Y PEGUE ESTA URL EN SU NAVEGADOR PARA AUTENTICARSE:${NC}"
+        echo -e "${CYAN}$url${NC}"
+        echo ""
+        echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+    fi
+    
+    # Opción 2 o 3: Mostrar QR
+    if [[ "$AUTH_VIEW_OPTION" = "2" || "$AUTH_VIEW_OPTION" = "3" ]]; then
+        # Verificar si qrencode está disponible
+        if command -v qrencode &> /dev/null; then
+            echo ""
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${GREEN}                     CÓDIGO QR DE AUTENTICACIÓN                     ${NC}"
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo ""
+            echo -e "${YELLOW}ESCANEE ESTE CÓDIGO QR CON SU DISPOSITIVO MÓVIL:${NC}"
+            echo ""
+            
+            # Generar QR con mejor visualización
+            qrencode -t ANSIUTF8 -m 2 -s 1 "$url"
+            
+            echo ""
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo ""
+        else
+            print_warning "No se puede mostrar el código QR. qrencode no está instalado."
+            # Si eligió solo QR pero no está disponible, mostrar URL
+            if [[ "$AUTH_VIEW_OPTION" = "2" ]]; then
+                echo -e "${YELLOW}Mostrando URL en su lugar:${NC}"
+                echo -e "${CYAN}$url${NC}"
+                echo ""
+            fi
+        fi
+    fi
+    
+    # Si eligió una opción inválida, mostrar ambos por defecto
+    if [[ "$AUTH_VIEW_OPTION" != "1" && "$AUTH_VIEW_OPTION" != "2" && "$AUTH_VIEW_OPTION" != "3" ]]; then
+        print_warning "Opción no válida. Mostrando ambas opciones."
+        
+        # Mostrar URL
+        echo ""
+        echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}                URL DE AUTENTICACIÓN DE CLOUDFLARE                   ${NC}"
+        echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "${YELLOW}COPIE Y PEGUE ESTA URL EN SU NAVEGADOR PARA AUTENTICARSE:${NC}"
+        echo -e "${CYAN}$url${NC}"
+        echo ""
         echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         
-        # Generar QR con mejor visualización
-        qrencode -t ANSIUTF8 -m 2 -s 1 "$url"
-        
-        echo ""
-        echo -e "${YELLOW}Si el QR no se visualiza correctamente, utilice la URL proporcionada arriba${NC}"
-        echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-    else
-        print_warning "No se puede mostrar el código QR. Use la URL proporcionada arriba."
+        # Mostrar QR si está disponible
+        if command -v qrencode &> /dev/null; then
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${GREEN}                     CÓDIGO QR DE AUTENTICACIÓN                     ${NC}"
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo ""
+            echo -e "${YELLOW}ESCANEE ESTE CÓDIGO QR CON SU DISPOSITIVO MÓVIL:${NC}"
+            echo ""
+            qrencode -t ANSIUTF8 -m 2 -s 1 "$url"
+            echo ""
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+            echo ""
+        fi
     fi
     
     print_info "Esperando a que complete la autenticación..."
