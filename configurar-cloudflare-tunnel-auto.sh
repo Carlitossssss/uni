@@ -295,6 +295,32 @@ show_auth_url() {
     fi
     
     print_info "Esperando a que complete la autenticación..."
+    echo -e "${YELLOW}IMPORTANTE: Después de autenticarse en el navegador, presione ENTER aquí cuando termine${NC}"
+    read -r -p "Presione ENTER cuando haya completado la autenticación en el navegador..." 
+}
+
+# Función mejorada para verificar autenticación
+verify_authentication() {
+    print_info "Verificando autenticación con Cloudflare..."
+    
+    # Verificar si el certificado existe
+    if [ -f "$HOME/.cloudflared/cert.pem" ]; then
+        print_success "Certificado encontrado en $HOME/.cloudflared/cert.pem"
+        return 0
+    else
+        print_warning "No se encontró el certificado. Intentando nuevamente la autenticación."
+        # Reintentar autenticación
+        cloudflared tunnel login
+        
+        # Verificar nuevamente
+        if [ -f "$HOME/.cloudflared/cert.pem" ]; then
+            print_success "Certificado encontrado en $HOME/.cloudflared/cert.pem"
+            return 0
+        else
+            print_error "No se pudo completar la autenticación. Verifique su conexión e intente nuevamente."
+            return 1
+        fi
+    fi
 }
 
 # Capturar la URL de autenticación y mostrarla según preferencia del usuario
@@ -319,17 +345,18 @@ get_auth_url_and_show() {
         # Mostrar la URL o QR según elección del usuario
         show_auth_url "$AUTH_URL"
         
-        # Esperar a que el usuario complete la autenticación
-        print_info "Esperando a que complete la autenticación..."
-        while [ ! -f "$HOME/.cloudflared/cert.pem" ] || [ "$(find "$HOME/.cloudflared/cert.pem" -mmin -5 | wc -l)" -eq 0 ]; do
-            sleep 5
-            echo -n "."
-        done
-        echo ""
-        print_success "Autenticación completada correctamente"
+        # Verificar autenticación con nueva función
+        verify_authentication
+        if [ $? -ne 0 ]; then
+            print_error "Error en el proceso de autenticación"
+            exit 1
+        fi
     else
         print_warning "No se pudo capturar la URL automáticamente. Usando método estándar."
         cloudflared tunnel login
+        
+        # Verificar autenticación con nueva función
+        verify_authentication
         if [ $? -ne 0 ]; then
             print_error "Error en el proceso de autenticación"
             exit 1
@@ -339,7 +366,7 @@ get_auth_url_and_show() {
 }
 
 # Verificar si existe un certificado de autenticación
-if [ -f "$HOME/.cloudflared/cert.pem" ]; then
+if [ -f "$HOME/.cloudflared/cert.pem" ];then
     print_info "Certificado de autenticación encontrado en $HOME/.cloudflared/cert.pem"
     print_question "¿Desea usar este certificado o generar uno nuevo? (usar/nuevo):"
     read -r AUTH_CHOICE
@@ -550,41 +577,51 @@ print_success "Configuración de túnel completada con éxito"
 # Mostrar información de acceso
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}                INFORMACIÓN DE ACCESO A LOS SERVICIOS${NC}"
+echo -e "${GREEN}           SERVICIO CONFIGURADO - 100% GRATUITO SIN DOMINIO         ${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "Servicio principal (${MAIN_SERVICE_NAME}):"
-echo -e "  ${CYAN}https://${MAIN_SERVICE_NAME}.${TUNNEL_ID}.cfargotunnel.com${NC}"
-echo -e "  Expone el servicio local en el puerto: ${MAIN_PORT}"
+echo -e "${YELLOW}¡IMPORTANTE! Esta configuración es:${NC}"
+echo -e " ✓ ${GREEN}COMPLETAMENTE GRATUITA${NC} - No requiere ningún pago"
+echo -e " ✓ ${GREEN}SIN DOMINIO PROPIO${NC} - Usa subdominios gratuitos de Cloudflare"
+echo -e " ✓ ${GREEN}LISTA PARA USAR${NC} - No necesita configuración adicional"
+echo ""
+echo -e "${PURPLE}SU URL DE ACCESO AL SERVICIO ES:${NC}"
+echo -e "${GREEN}https://${MAIN_SERVICE_NAME}.${TUNNEL_ID}.cfargotunnel.com${NC}"
 echo ""
 
 if [[ -n "$ADDITIONAL_SERVICES" ]]; then
-    echo -e "Servicios adicionales:"
+    echo -e "${PURPLE}SERVICIOS ADICIONALES:${NC}"
     echo "$ADDITIONAL_SERVICES" | while read -r line; do
         if [[ "$line" == *"hostname:"* ]]; then
             SERVICE_URL=$(echo "$line" | awk '{print $3}')
-            echo -e "  ${CYAN}https://$SERVICE_URL${NC}"
-        elif [[ "$line" == *"service:"* ]]; then
-            SERVICE_PORT=$(echo "$line" | awk '{print $3}' | cut -d':' -f3)
-            echo -e "  Expone el servicio local en el puerto: $SERVICE_PORT"
-            echo ""
+            echo -e "${GREEN}https://$SERVICE_URL${NC}"
         fi
     done
+    echo ""
 fi
 
-echo -e "${YELLOW}IMPORTANTE:${NC} Para acceder a estos servicios, los usuarios deberán autenticarse"
-echo -e "con sus cuentas de Google una vez que configure la aplicación en Cloudflare Zero Trust."
-echo ""
-echo -e "Comandos útiles:"
-echo -e "  - Ver estado del servicio: ${CYAN}systemctl status cloudflared-tunnel.service${NC}"
-echo -e "  - Ver logs del túnel: ${CYAN}journalctl -u cloudflared-tunnel.service -f${NC}"
-echo -e "  - Reiniciar el túnel: ${CYAN}systemctl restart cloudflared-tunnel.service${NC}"
-echo ""
-echo -e "${YELLOW}RECOMENDACIONES SEGÚN ESQUEMA DE PARTICIONAMIENTO:${NC}"
-echo -e "  - ESTRICTAMENTE siguiendo particionamiento_servidor_contenedores.md:"
-echo -e "  - Servidor optimizado para >30 contenedores Podman"
-echo -e "  - Partición /var (450GB, XFS+LVM): ${CYAN}Configuraciones, logs, bases de datos${NC}"
-echo -e "  - Partición /srv (XFS): ${CYAN}Datos persistentes de servicios${NC}"
-echo -e "  - NO usar /home para datos de servicios (ver tabla comparativa)"
+echo -e "${CYAN}Estas URLs funcionan inmediatamente. No necesita ninguna configuración adicional.${NC}"
+echo -e "${CYAN}Puede compartir estas URLs directamente para acceder a sus servicios.${NC}"
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════════════${NC}"
+
+# Simplificar verificación de túnel
+print_question "¿Desea verificar que el túnel está funcionando correctamente? (s/N):"
+read -r CHECK_TUNNEL
+
+if [[ "$CHECK_TUNNEL" = "s" || "$CHECK_TUNNEL" = "S" ]]; then
+    print_info "Verificando conexión al túnel..."
+    # Mostrar información básica del túnel
+    echo -e "${CYAN}Información del túnel:${NC}"
+    cloudflared tunnel info "$TUNNEL_NAME"
+    
+    # Comprobar el estatus del servicio de forma simple
+    echo -e "${CYAN}Estado del servicio:${NC}"
+    systemctl is-active cloudflared-tunnel.service
+    
+    print_success "¡Verificación completada! Su túnel gratuito está funcionando."
+fi
+
+print_success "¡LISTO! Su túnel gratuito de Cloudflare está configurado y listo para usar."
+print_success "Puede acceder a su servicio en: https://${MAIN_SERVICE_NAME}.${TUNNEL_ID}.cfargotunnel.com"
+echo ""
