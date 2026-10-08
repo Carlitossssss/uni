@@ -57,6 +57,8 @@ test('proxy permite únicamente rutas conocidas y no envía la clave en verifica
 test('errores de conectividad distinguen respuestas HTML del servicio API',async()=>{
   const original=globalThis.fetch;globalThis.fetch=async()=>new Response('<html>Forbidden</html>',{status:403});
   try{const response=await portal.fetch(request('/api/portal?action=templates',{headers:{cookie:cookie()}}));assert.equal(response.status,502);assert.match((await response.json()).error,/HTTP 403/);}finally{globalThis.fetch=original;}
+  globalThis.fetch=async()=>new Response('<html>Cloudflare: challenge-platform</html>',{status:403});
+  try{const response=await portal.fetch(post('/api/portal?action=verify',{identifier:'37'}));assert.match((await response.json()).error,/Cloudflare bloqueó/);}finally{globalThis.fetch=original;}
 });
 test('webhook valida cuerpo original, antigüedad y secreto institucional; admite formato real y prueba',async()=>{
   for(const event of [{id:'evt_test',type:'webhook.test'},{event:'certificate.issued',jobId:'job_test'}]){
