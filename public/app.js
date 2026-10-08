@@ -62,21 +62,27 @@ async function loadCertificates(){
 }
 $('filter-form').onsubmit=event=>{event.preventDefault();page=1;loadCertificates();};$('refresh-certificates').onclick=()=>{loadCertificates();loadBalance();};$('previous').onclick=()=>{if(page>1){page--;loadCertificates();}};$('next').onclick=()=>{page++;loadCertificates();};
 async function loadTemplates(){
-  $('template').disabled=true;message('template-hint','Consultando las plantillas de tu institución…');
+  $('issue-button').disabled=true;templateReadyId=null;templatesReady=false;$('custom-fields').replaceChildren();$('template').disabled=true;message('template-hint','Consultando las plantillas de tu institución…');
   try{const result=await api('templates');$('template').replaceChildren();const placeholder=node('option',result.data?.length?'Selecciona una plantilla':'No hay plantillas disponibles');placeholder.value='';$('template').append(placeholder);for(const item of result.data||[]){const option=node('option',item.name);option.value=item.id;$('template').append(option);}templatesReady=true;message('template-hint',result.data?.length?'':'Crea una plantilla en Tessera y vuelve a abrir este apartado.');if(!result.data?.length)templatesReady=false;}
   catch(error){$('template').replaceChildren(node('option','No se pudieron cargar las plantillas'));message('template-hint',error.message,true);}finally{$('template').disabled=false;}
 }
+$('retry-templates').onclick=loadTemplates;
 $('template').onchange=async()=>{
   const version=++templateVersion;templateReadyId=null;$('custom-fields').replaceChildren();if(!$('template').value){message('template-hint','Selecciona una plantilla.');return;}
   $('issue-button').disabled=true;message('template-hint','Preparando los campos de la plantilla…');
-  try{const result=await api('template',{query:{id:$('template').value}});if(version!==templateVersion)return;templateReadyId=$('template').value;for(const field of result.fields||[]){if(field.automatic)continue;const wrapper=node('div');const input=node('input');input.id='field-'+field.key;input.dataset.key=field.key;input.value=field.defaultValue||'';input.required=true;input.maxLength=2000;const label=node('label',field.key.replaceAll('_',' '));label.htmlFor=input.id;wrapper.append(label,input);$('custom-fields').append(wrapper);}message('template-hint','El nombre y los identificadores del certificado se completan automáticamente.');}
+  try{const result=await api('template',{query:{id:$('template').value}});if(version!==templateVersion)return;templateReadyId=$('template').value;
+    const fields=result.fields||[];$('grade-field').hidden=!fields.some(f=>f.key==='puntaje');$('description-field').hidden=true;$('custom-fields-title').hidden=!fields.some(f=>!f.automatic);
+    for(const field of fields){if(field.automatic)continue;const wrapper=node('div');const input=node('input');input.id='field-'+field.key;input.dataset.key=field.key;input.value=field.defaultValue||'';input.required=field.required!==false;input.maxLength=2000;
+      const kind=field.kind||'text';if(['email','date'].includes(kind))input.type=kind;else if(['number','score','year'].includes(kind)){input.type='number';input.min=kind==='year'?'1000':'0';input.step=kind==='year'?'1':'any';if(kind==='score')input.max='100';if(kind==='year')input.max='9999';}else if(kind==='wallet'){input.pattern='0x[a-fA-F0-9]{40}';}
+      const label=node('label',field.key.replaceAll('_',' ')+(input.required?'':' (opcional)'));label.htmlFor=input.id;wrapper.append(label,input);$('custom-fields').append(wrapper);}
+    message('template-hint','El nombre y los identificadores del certificado se completan automáticamente.');}
   catch(error){if(version===templateVersion)message('template-hint',error.message,true);}finally{if(version===templateVersion)$('issue-button').disabled=templateReadyId!==$('template').value;}
 };
 $('issue-form').onsubmit=async event=>{
   event.preventDefault();if(templateReadyId!==$('template').value){message('issue-status','Espera a que terminen de cargar los campos de la plantilla.',true);return;}loading($('issue-button'),true,'Enviando certificado…');message('issue-status','Enviando los datos a Tessera…');
   try{
-    const student={name:$('student').value.trim(),email:$('email').value.trim()};if($('wallet').value.trim())student.walletAddress=$('wallet').value.trim();
-    const achievement={name:$('award').value.trim(),completedAt:new Date($('completed').value+'T12:00:00Z').toISOString()};if($('description').value.trim())achievement.description=$('description').value.trim();if($('grade').value!=='')achievement.grade=Number($('grade').value);
+    const student={name:$('student').value.trim(),email:$('email').value.trim()};
+    const achievement={name:$('award').value.trim(),completedAt:new Date($('completed').value+'T12:00:00Z').toISOString()};if(!$('description-field').hidden&&$('description').value.trim())achievement.description=$('description').value.trim();if(!$('grade-field').hidden&&$('grade').value!=='')achievement.grade=Number($('grade').value);
     const payload={student,achievement,templateId:$('template').value,fieldValues:Object.fromEntries([...$('custom-fields').querySelectorAll('input')].map(input=>[input.dataset.key,input.value.trim()]))};
     const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(payload))))).map(x=>x.toString(16).padStart(2,'0')).join('');
     let previous;try{previous=JSON.parse(sessionStorage.getItem('blokis.issue')||'null');}catch{previous=null;}const key=previous?.fingerprint===fingerprint?previous.key:crypto.randomUUID();sessionStorage.setItem('blokis.issue',JSON.stringify({fingerprint,key}));
@@ -99,10 +105,19 @@ async function checkJob(){
   }catch(error){$('tracking-description').textContent=error.message+' Usa «Consultar estado» para reintentar.';}finally{checking=false;$('check-job').disabled=false;}
 }
 $('check-job').onclick=()=>{checks=0;checkJob();};
-$('new-issue').onclick=()=>{sessionStorage.removeItem('blokis.issue');sessionStorage.removeItem('blokis.tracking');pendingJob=null;clearTimeout(timer);$('tracking').hidden=true;$('new-issue').hidden=true;$('issue-form').reset();$('custom-fields').replaceChildren();$('completed').value=new Date().toISOString().slice(0,10);message('issue-status','Completa los datos de la nueva emisión.');tab('issue');$('student').focus();};
+$('new-issue').onclick=()=>{templateReadyId=null;sessionStorage.removeItem('blokis.issue');sessionStorage.removeItem('blokis.tracking');pendingJob=null;clearTimeout(timer);$('tracking').hidden=true;$('new-issue').hidden=true;$('issue-form').reset();$('custom-fields').replaceChildren();$('completed').value=new Date().toISOString().slice(0,10);message('issue-status','Completa los datos de la nueva emisión.');tab('issue');$('student').focus();};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&pendingJob&&authenticated)checkJob();});
 $('cancel-revoke').onclick=()=>$('revoke-dialog').close();
 $('revoke-form').onsubmit=async event=>{event.preventDefault();loading($('revoke-button'),true,'Revocando…');message('revoke-status','Enviando la revocación…');try{const result=await api('revoke',{method:'POST',data:{id:revokeId,reasonText:$('revoke-reason').value.trim(),publicReason:$('public-reason').checked,confirmed:$('confirm-revoke').checked}});pendingJob={jobId:result.jobId,certificateId:revokeId,kind:'revoke'};sessionStorage.setItem('blokis.tracking',JSON.stringify(pendingJob));$('tracking').hidden=false;$('revoke-dialog').close();checks=0;await checkJob();}catch(error){message('revoke-status',error.message,true);}finally{loading($('revoke-button'),false);}};
 fetch('/api/session').then(async response=>{if(!response.ok)throw Error();const result=await response.json();setAuth(result.signedIn);if(result.signedIn)await loadStaff();}).catch(()=>message('login-status','Publica el proyecto en Vercel para habilitar el acceso institucional.',true));
 const initial=new URL(location.href).searchParams.get('certificate');if(initial){$('verify-id').value=initial;verify(initial,{scroll:false});}
 
+
+let studentVersion=0;
+$('email').oninput=()=>{studentVersion++;message('student-status','Puedes consultar si este estudiante pertenece a tu institución.');};
+$('find-student').onclick=async()=>{if(!$('email').value||!$('email').reportValidity())return;const version=++studentVersion;loading($('find-student'),true,'Buscando…');message('student-status','Consultando el registro institucional…');try{const result=await api('student',{query:{email:$('email').value.trim()}});if(version!==studentVersion)return;if(result.student){$('student').value=result.student.name||'';message('student-status','Estudiante encontrado. Revisa su nombre antes de emitir.');}else message('student-status','No figura en tu institución. Puedes completar su nombre y emitir por email.');}catch(error){if(version===studentVersion)message('student-status',error.message,true);}finally{loading($('find-student'),false);}};
+let scanner;
+async function scanTools(){return scanner||=import('./scanner.js');}
+$('read-file').onclick=()=>$('certificate-file').click();
+$('certificate-file').onchange=async()=>{const file=$('certificate-file').files[0];if(!file)return;loading($('read-file'),true,'Leyendo documento…');message('verify-status','Buscando el QR. El documento se procesa en tu dispositivo.');try{const identifier=await(await scanTools()).readFile(file,text=>message('verify-status',text));$('verify-id').value=identifier;await verify(identifier);if(!$('credential').hidden)message('verify-status','QR leído y credencial consultada. Compara el documento con el original mostrado: leer su QR no demuestra que el archivo no haya sido modificado.');}catch(error){message('verify-status',error.message,true);}finally{$('certificate-file').value='';loading($('read-file'),false);}};
+$('scan-camera').onclick=async()=>{loading($('scan-camera'),true,'Abriendo cámara…');try{await(await scanTools()).openCamera(identifier=>{$('verify-id').value=identifier;verify(identifier);});}catch(error){message('verify-status',error.message,true);}finally{loading($('scan-camera'),false);}};

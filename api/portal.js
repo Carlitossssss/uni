@@ -5,8 +5,13 @@ export function verificationInput(value) {
   let id = String(value || '').trim();
   if (id.startsWith('https://')) {
     const url = new URL(id);
-    if (url.hostname !== 'tessera.blokis.dev' || !/^\/verify\/\d+\/?$/.test(url.pathname)) throw problem(400, 'Pega un enlace de verificación de Tessera válido.');
-    id = url.pathname.split('/')[2];
+    if (url.username || url.password || url.port) throw problem(400, 'El enlace no es válido.');
+    if (url.hostname === 'tessera.blokis.dev') {
+      if (/^\/verify\/\d+\/?$/.test(url.pathname)) id = url.pathname.split('/')[2];
+      else if (/^\/verify\/?$/.test(url.pathname)) id = url.searchParams.get('certificateId') || url.searchParams.get('txHash') || url.searchParams.get('tokenId') || '';
+      else throw problem(400, 'Pega un enlace de verificación de Tessera válido.');
+    } else if (['polygonscan.com','amoy.polygonscan.com','snowtrace.io','testnet.snowtrace.io','43113.routescan.io','43114.routescan.io'].includes(url.hostname) && /^\/tx\/0x[a-f0-9]{64}\/?$/i.test(url.pathname)) id = url.pathname.split('/')[2];
+    else throw problem(400, 'Usa un enlace de Tessera o de una transacción de Polygon o Avalanche.');
   }
   if (/^\d{1,78}$/.test(id)) return { tokenId: id };
   if (uuid.test(id)) return { certificateId: id };
@@ -30,6 +35,11 @@ export default { async fetch(request) {
         path = '/v1/certificates?' + query;
       } else if (action === 'wallet') path = '/v1/wallet/balance';
       else if (action === 'templates') path = '/v1/templates?limit=100';
+      else if (action === 'student') {
+        const email = (url.searchParams.get('email') || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw problem(400, 'Introduce un email válido.');
+        path = '/v1/students/lookup?email=' + encodeURIComponent(email);
+      }
       else if (action === 'template' && uuid.test(id)) path = '/v1/templates/' + id;
       else if (action === 'detail' && (uuid.test(id) || /^\d{1,78}$/.test(id))) path = '/v1/certificates/' + id;
       else if (action === 'job' && /^[-a-zA-Z0-9_]{1,200}$/.test(id)) path = '/v1/jobs/' + id;
@@ -41,7 +51,7 @@ export default { async fetch(request) {
         if (input.confirmed !== true) throw problem(400, 'Confirma la emisión y el consumo de créditos.');
         if (typeof input.idempotencyKey !== 'string' || !uuid.test(input.idempotencyKey)) throw problem(400, 'Falta el identificador seguro de la emisión.');
         path = '/v1/certificates';
-        payload = { student: input.student, achievement: input.achievement, templateId: input.templateId, fieldValues: input.fieldValues, idempotencyKey: input.idempotencyKey };
+        payload = { student: { name: input.student?.name, email: input.student?.email }, achievement: input.achievement, templateId: input.templateId, fieldValues: input.fieldValues, idempotencyKey: input.idempotencyKey };
       } else if (action === 'revoke' && (uuid.test(input.id || '') || /^\d{1,78}$/.test(input.id || ''))) {
         if (input.confirmed !== true) throw problem(400, 'Confirma la revocación.');
         path = '/v1/certificates/' + input.id + '/revoke'; payload = { reason: 'institution_request', reasonText: input.reasonText, publicReason: input.publicReason === true };
@@ -53,7 +63,11 @@ export default { async fetch(request) {
     if (new URL(base).protocol !== 'https:') throw problem(503, 'La conexión con Tessera debe usar HTTPS.');
     if (!isPublic && !process.env.TESSERA_API_KEY) throw problem(503, 'Configura TESSERA_API_KEY en Vercel.');
     const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(!isPublic ? { 'X-API-Key': process.env.TESSERA_API_KEY } : {}) }, body: payload ? JSON.stringify(payload) : undefined, redirect: 'error', signal: AbortSignal.timeout(24000) });
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch {
+      throw problem(502, `Tessera respondió HTTP ${response.status} sin datos JSON. Revisa TESSERA_API_BASE y el acceso del servidor de Vercel a /backend.`);
+    }
     if (!response.ok) return json({ error: data.error?.message || 'Tessera rechazó la solicitud.', details: data.error?.details || null }, response.status);
     return json(data, response.status);
   } catch (error) { return failure(error); }

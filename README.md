@@ -92,6 +92,33 @@ cada una sin asumir que estén confirmadas.
 
 API: la institución solicita una acción. Webhook: Tessera notifica un evento.
 
+## Verificación y emisión
+
+Puedes verificar con número, UUID, enlace de Tessera (también el del QR con
+`certificateId`), hash o enlace de una transacción de Polygon o Avalanche.
+Una dirección de contrato identifica la colección, no un certificado concreto.
+«Leer PDF o imagen» procesa hasta 12 MB y diez páginas en el dispositivo; los
+archivos no se suben. «Escanear QR» usa la cámara con permiso y la detiene al
+cerrar o cambiar de pestaña. Las bibliotecas oficiales PDF.js y jsQR se cargan
+solo al usar estas opciones y se sirven desde este proyecto con sus licencias.
+Leer el QR consulta la credencial original; no prueba la integridad del archivo
+seleccionado. Compara su contenido con la imagen y PDF originales mostrados.
+
+El formulario usa los campos y valores iniciales de la plantilla; mantiene los
+datos mínimos exigidos por la API. Buscar por email es opcional y solo devuelve
+estudiantes asociados a la institución, sin exponer el directorio global ni
+wallets. Si no hay coincidencia se puede completar el nombre manualmente. La
+API actual vincula la emisión al perfil por email y mantiene estas emisiones
+externas bajo custodia institucional; este portal nunca envía una wallet manual.
+
+La búsqueda institucional y los tipos de campos requieren desplegar también
+la actualización de Tessera en `build2026`. La búsqueda por transacción incluye
+las réplicas de Avalanche después de ese despliegue.
+
+Si Vercel muestra un fallo de conexión, revisa que `TESSERA_API_BASE` sea
+`https://tessera.blokis.dev/backend` (o elimina la variable para usar ese valor).
+No pongas el dominio del portal ni una URL de login. Después realiza Redeploy.
+
 ## Verificación local del código
 
 ```sh
