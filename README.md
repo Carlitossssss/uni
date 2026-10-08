@@ -119,6 +119,24 @@ Si Vercel muestra un fallo de conexión, revisa que `TESSERA_API_BASE` sea
 `https://tessera.blokis.dev/backend` (o elimina la variable para usar ese valor).
 No pongas el dominio del portal ni una URL de login. Después realiza Redeploy.
 
+### Cloudflare Free: conexión directa segura
+
+Si Bot Fight Mode bloquea a Vercel, añade `TESSERA_ORIGIN_IP=207.180.232.75`
+en las variables de servidor de Vercel (Production) y vuelve a desplegar el
+último commit de `codex/blokis-academia`. El portal se conecta al servidor por
+HTTPS en 443, conservando `tessera.blokis.dev` para Host, SNI y validación del
+certificado. Se verificó que ese origen responde con HTTPS válido. Si cambia
+la IP del VPS, actualiza esta variable. No uses `https://207.180.232.75` como
+API base: el certificado debe validarse contra su dominio.
+
+Esta opción no cambia los registros DNS, Bot Fight Mode, el webhook ni los
+otros servicios del dominio; no necesita abrir puertos nuevos. Los clientes
+del navegador siguen accediendo por Vercel y la clave se mantiene en sus
+funciones. El tramo Vercel→Tessera usa los controles de acceso y límites de la
+API del servidor, sin pasar por WAF/CDN de Cloudflare. Por tanto, no equivale a
+mantener las protecciones de Cloudflare en ese tramo. HTTPS debe seguir siendo
+válido: no se deshabilita su validación ni se siguen redirecciones.
+
 ## Verificación local del código
 
 ```sh
