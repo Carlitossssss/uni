@@ -66,6 +66,10 @@ export default { async fetch(request) {
     const text = await response.text();
     let data;
     try { data = JSON.parse(text); } catch {
+      if (response.status === 403 && /cloudflare|cf-chl|challenge-platform/i.test(text)) {
+        console.error('Tessera: acceso bloqueado por Cloudflare', {status:403,ray:response.headers.get('cf-ray'),challenge:response.headers.get('cf-mitigated')});
+        throw problem(502, 'Cloudflare bloqueó la conexión del servidor de Vercel a la API de Tessera (HTTP 403). Revisa el evento de seguridad para /backend/v1/ en Cloudflare. No es un error de tu API key.');
+      }
       throw problem(502, `Tessera respondió HTTP ${response.status} sin datos JSON. Revisa TESSERA_API_BASE y el acceso del servidor de Vercel a /backend.`);
     }
     if (!response.ok) return json({ error: data.error?.message || 'Tessera rechazó la solicitud.', details: data.error?.details || null }, response.status);
