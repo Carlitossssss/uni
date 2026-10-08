@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import https from 'node:https';
+import { EventEmitter } from 'node:events';
+import { fetchTessera } from '../lib/tessera.js';
 import { bodyJson, createSession, signedIn, verifySignature } from '../lib/security.js';
 import portal, { verificationInput } from '../api/portal.js';
 import session from '../api/session.js';
@@ -70,4 +73,44 @@ test('webhook valida cuerpo original, antigüedad y secreto institucional; admit
 });
 test('cuerpos sobredimensionados se rechazan antes de reenviar',async()=>{
   await assert.rejects(bodyJson(post('/api/portal',{large:'x'.repeat(66000)})),error=>error.status===413);
+});
+
+test('conexión al origen conserva TLS y dominio; rechaza redirecciones y certificados inválidos',async t=>{
+  const previous=process.env.TESSERA_ORIGIN_IP;
+  process.env.TESSERA_ORIGIN_IP='207.180.232.75';
+  let status=200, tlsError=false, calls=0;
+  t.mock.method(https,'request',(url,options,callback)=>{
+    calls++;
+    assert.equal(url.hostname,'tessera.blokis.dev');
+    assert.equal(options.servername,url.hostname);
+    assert.equal(options.rejectUnauthorized,true);
+    options.lookup(url.hostname,{all:true},(error,addresses)=>{
+      assert.equal(error,null);assert.deepEqual(addresses,[{address:'207.180.232.75',family:4}]);
+    });
+    const outgoing=new EventEmitter();
+    outgoing.end=body=>queueMicrotask(()=>{
+      assert.equal(body,'{"tokenId":"37"}');
+      if(tlsError){outgoing.emit('error',Object.assign(new Error('invalid certificate'),{code:'ERR_TLS_CERT_ALTNAME_INVALID'}));return;}
+      const incoming=new EventEmitter();
+      incoming.statusCode=status;incoming.headers={'content-type':'application/json'};incoming.resume=()=>{};
+      callback(incoming);
+      if(status===200){incoming.emit('data',Buffer.from('{"valid":true}'));incoming.emit('end');}
+    });
+    return outgoing;
+  });
+  const address='https://tessera.blokis.dev/backend/v1/certificates/verify';
+  const options={method:'POST',headers:{'Content-Type':'application/json'},body:'{"tokenId":"37"}'};
+  try{
+    assert.deepEqual(await(await fetchTessera(address,options)).json(),{valid:true});
+    status=302;await assert.rejects(fetchTessera(address,options),error=>error.status===502);
+    tlsError=true;await assert.rejects(fetchTessera(address,options),error=>error.code==='ERR_TLS_CERT_ALTNAME_INVALID');
+    assert.equal(calls,3);
+    for(const invalid of ['https://other.example/backend/v1/certificates','http://tessera.blokis.dev/backend/v1/certificates','https://tessera.blokis.dev/login']){
+      await assert.rejects(fetchTessera(invalid,options),error=>error.status===503);
+    }
+    process.env.TESSERA_ORIGIN_IP='not-an-ip';await assert.rejects(fetchTessera(address,options),error=>error.status===503);
+    assert.equal(calls,3);
+  }finally{
+    if(previous===undefined)delete process.env.TESSERA_ORIGIN_IP;else process.env.TESSERA_ORIGIN_IP=previous;
+  }
 });

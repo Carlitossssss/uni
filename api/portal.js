@@ -1,4 +1,5 @@
 import { bodyJson, failure, json, problem, requireSession, sameOrigin } from '../lib/security.js';
+import { fetchTessera } from '../lib/tessera.js';
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export function verificationInput(value) {
@@ -62,7 +63,7 @@ export default { async fetch(request) {
     const base = (process.env.TESSERA_API_BASE || 'https://tessera.blokis.dev/backend').replace(/\/$/, '');
     if (new URL(base).protocol !== 'https:') throw problem(503, 'La conexión con Tessera debe usar HTTPS.');
     if (!isPublic && !process.env.TESSERA_API_KEY) throw problem(503, 'Configura TESSERA_API_KEY en Vercel.');
-    const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(!isPublic ? { 'X-API-Key': process.env.TESSERA_API_KEY } : {}) }, body: payload ? JSON.stringify(payload) : undefined, redirect: 'error', signal: AbortSignal.timeout(24000) });
+    const response = await fetchTessera(base + path, { method, headers: { 'Content-Type': 'application/json', ...(!isPublic ? { 'X-API-Key': process.env.TESSERA_API_KEY } : {}) }, body: payload ? JSON.stringify(payload) : undefined, redirect: 'error', signal: AbortSignal.timeout(24000) });
     const text = await response.text();
     let data;
     try { data = JSON.parse(text); } catch {
