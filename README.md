@@ -14,6 +14,13 @@ No añade cursos, alumnos ficticios ni endpoints inexistentes de insignias.
 
 El repositorio conectado es `Carlitossssss/uni`. Si importas ese repositorio:
 
+El portal está publicado en la rama **`codex/blokis-academia`**; `master`
+todavía contiene el proyecto anterior. Despliega esa rama. Si el proyecto ya
+está creado, abre Settings → Environments → Production → Branch Tracking y establece
+`codex/blokis-academia` como rama de producción. En interfaces anteriores
+esa opción aparece en Settings → Git. Después crea un despliegue Production
+de esa rama desde Deployments. No despliegues `master` esperando ver el portal.
+
 - Project Name: `blokis-academia` o el nombre que tengas disponible.
 - Root Directory: `./` (la raíz de **este repositorio uni**, no del workspace).
 - Application Preset: **Other**.
